@@ -1,1 +1,70 @@
-Simple PHP library for working with the LinkedIn API (based on epiTwitter by Jaisen Mathai <jaisen@jmathai.com> -- see http://wiki.github.com/jmathai/epicode/epitwitter ).
+Simple PHP library for working with the LinkedIn API (based on
+epiTwitter by Jaisen Mathai <jaisen@jmathai.com> --
+see http://wiki.github.com/jmathai/epicode/epitwitter ).
+
+require_once('EpiCurl.php');
+require_once('EpiOAuth.php');
+require_once('EpiLinkedIn.php');
+
+$linkedin_consumer_key = "CONSUMER KEY ASSIGNED BY LINKEDIN";
+$linkedin_consumer_secret = "CONSUMER SECRET ASSIGNED BY LINKEDIN";
+
+// The following code is used to generate the proper authorization link
+try {
+  // authorize with LinkedIn
+  $linkedinObj = new EpiLinkedIn($linkedin_consumer_key, $linkedin_consumer_secret);
+  // set the location you want LinkedIn to send the user/response
+  // when they authorize your app.
+  $linkedinObj->setCallback("http://" . $_SERVER['SERVER_NAME'] . "/linkedin.php");
+  // LinkedIn returns an array of data (oauth_token_secret AND oauth_token)
+  $values = $linkedinObj->getAuthenticateUrl();
+  // Save the secret that is generated/returned by LinkedIn (we'll
+  // need this when we deal with the response [via our callback])
+  $_SESSION['oauth_token_secret'] = $values['oauth_token_secret'];
+  ?>
+  <a href="https://api.linkedin.com/uas/oauth/authorize?oauth_token=<?= $values['oauth_token'] ?>">
+    Authorize our app with LinkedIn
+  </a>
+  <?
+} catch (Exception $e) {
+  // troubles authorizing; check your consumer key and secret combo
+}
+
+// use this code to handle the response from a user authorizing your app. on LinkedIn
+try {
+  // Get a token from LinkedIn
+  $linkedinObj = new EpiLinkedIn($linkedin_consumer_key, $linkedin_consumer_secret);
+  // we need to use a combination of the oauth_token sent by LinkedIn
+  // and the previous secret LinkedIn sent us when we generated the authorize link (above code)
+  $linkedinObj->setToken($_GET['oauth_token'],$_SESSION['oauth_token_secret']);
+  // finally we get tokens we can use to make actual API requests by using the
+  // oauth_verifier sent by LinkedIn
+  $token = $linkedinObj->getAccessToken(array('oauth_verifier' => $_REQUEST['oauth_verifier']));
+  // we now have user $token->oauth_token and $token->oauth_token_secret
+  // save them somewhere for use with future API calls for this user
+  $_SESSION['linkedin_token_key'] = $token->oauth_token;
+  $_SESSION['linkedin_token_secret'] = $token->oauth_token_secret;
+} catch (Exception $e) {
+  // troubles getting a token; check your token and secret
+}
+
+// The following code shows an example API call once we have proper tokens
+try {
+  // now we should be able to make our LinkedIn API calls
+  $lObj = new EpiLinkedIn($linkedin_consumer_key, $linkedin_consumer_secret,
+    $_SESSION['linkedin_token_key'], $_SESSION['linkedin_token_secret']);
+  // let's get the details from the LinkedIn profile
+  $profile = $lObj->get('/v1/people/~:(first-name,last-name,location,industry,summary)');
+  // LinkedIn returns XML, so let's conver to a PHP object
+  $xml = simplexml_load_string($profile->responseText, 'SimpleXMLElement', LIBXML_NOCDATA);
+  // For demo purposes let's just roll the data up into an associative array
+  $user['firstname'] = (string) $xml->{'first-name'};
+  $user['lastname'] = (string) $xml->{'last-name'};
+  $user['location'] = (string) $xml->location->name;
+  $user['industry'] = (string) $xml->industry;
+  $user['summary'] = (string) $xml->summary;
+  // and finally display what we've got 
+  var_dump($user);
+} catch (Exception $e) {
+  // troubles making a call; check your call syntax
+}
